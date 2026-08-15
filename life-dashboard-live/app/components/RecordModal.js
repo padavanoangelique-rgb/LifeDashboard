@@ -1,20 +1,24 @@
 'use client';
 import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { emptyRecord } from '../../lib/schemas';
+import { emptyRecord, TIME_BLOCK_COLORS } from '../../lib/schemas';
 
 // Generic add/edit form modal driven entirely by a schema object from
 // lib/schemas.js. Handles insert, update, and delete against Supabase.
 //
 // Props:
-//   schema    — an entry from SCHEMAS (see lib/schemas.js)
-//   record    — existing row to edit, or null/undefined to create a new one
-//   onClose   — called with no args to dismiss without saving
-//   onSaved   — called with (row, { deleted }) after a successful save/delete
-//   extra     — optional object of extra fixed fields merged into every save
-//               (e.g. { goal_id } when adding a milestone under a goal)
-//   wide      — render the larger modal width
-export default function RecordModal({ schema, record, onClose, onSaved, extra, wide }) {
+//   schema         — an entry from SCHEMAS (see lib/schemas.js)
+//   record         — existing row to edit, or null/undefined to create a new one
+//   onClose        — called with no args to dismiss without saving
+//   onSaved        — called with (row, { deleted }) after a successful save/delete
+//   extra          — optional object of extra fixed fields merged into every save
+//                    (e.g. { goal_id } when adding a milestone under a goal)
+//   wide           — render the larger modal width
+//   dynamicOptions — optional { [fieldKey]: Array<string | {value,label}> } to
+//                    override a select field's options at render time (used
+//                    for foreign-key pickers like "link to a goal", whose
+//                    choices come from the caller's already-loaded data)
+export default function RecordModal({ schema, record, onClose, onSaved, extra, wide, dynamicOptions }) {
   const [form, setForm] = useState(() => (record ? { ...emptyRecord(schema), ...record } : emptyRecord(schema)));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -33,6 +37,7 @@ export default function RecordModal({ schema, record, onClose, onSaved, extra, w
       let v = form[f.key];
       if (f.type === 'number') v = v === '' || v === null || v === undefined ? 0 : Number(v);
       if (f.type === 'date' && !v) v = null;
+      if (f.nullable && v === '') v = null;
       payload[f.key] = v;
     }
     Object.assign(payload, extra || {});
@@ -82,13 +87,34 @@ export default function RecordModal({ schema, record, onClose, onSaved, extra, w
                   <label>{f.label}</label>
                   {f.type === 'select' ? (
                     <select value={form[f.key] ?? ''} onChange={e => setField(f.key, e.target.value)}>
-                      {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                      {(dynamicOptions?.[f.key] ?? f.options).map(o => {
+                        const opt = typeof o === 'string' ? { value: o, label: o } : o;
+                        return <option key={opt.value} value={opt.value}>{opt.label}</option>;
+                      })}
                     </select>
                   ) : f.type === 'textarea' ? (
                     <textarea value={form[f.key] ?? ''} onChange={e => setField(f.key, e.target.value)} />
+                  ) : f.type === 'color' ? (
+                    <>
+                      <input type="color" value={form[f.key] || TIME_BLOCK_COLORS[0]} onChange={e => setField(f.key, e.target.value)} style={{ width: 56, height: 34, padding: 2, verticalAlign: 'middle' }} />
+                      <span className="btn-row" style={{ display: 'inline-flex', marginLeft: 8, verticalAlign: 'middle' }}>
+                        {TIME_BLOCK_COLORS.map(c => (
+                          <button
+                            type="button"
+                            key={c}
+                            onClick={() => setField(f.key, c)}
+                            title={c}
+                            style={{
+                              width: 20, height: 20, borderRadius: '50%', padding: 0,
+                              background: c, border: form[f.key] === c ? '2px solid var(--text-primary)' : '1px solid var(--border)'
+                            }}
+                          />
+                        ))}
+                      </span>
+                    </>
                   ) : (
                     <input
-                      type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                      type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : 'text'}
                       step={f.type === 'number' ? (f.step || 'any') : undefined}
                       value={form[f.key] ?? ''}
                       onChange={e => setField(f.key, e.target.value)}

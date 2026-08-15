@@ -1,12 +1,18 @@
 # My Life Dashboard
 
 A private, single-login household dashboard: Guardian Permits, Majestic Permits, Nutrition
-(+ meal planner + grocery list), Bills, Finance (accounts/budget/debts), Portfolio, and
-Personal Goals. Built with Next.js + Supabase (Postgres/Auth) + Vercel, with an optional daily
-stock-price refresh via Finnhub.
+(+ meal planner + grocery list), Bills, Finance (accounts/budget/debts), Portfolio, Personal
+Goals (+ color-coded weekly time blocking), and an Overview with a week-view calendar for
+Appointments & To-dos. Built with Next.js + Supabase (Postgres/Auth) + Vercel, with an
+optional daily stock-price refresh via Finnhub.
 
 Since you already have GitHub, Supabase, and Vercel accounts, these steps skip the signup
 walkthroughs and go straight to the project-specific setup.
+
+**Already ran `schema.sql` once before?** It's safe to run the current version again as-is —
+every statement is written to be re-runnable and it will only add the new `time_blocks` table
+without touching your existing data. If you'd rather not re-run the whole file, paste
+`supabase/migration_time_blocks.sql` into the SQL Editor instead — it adds just that one table.
 
 ## 1. Create the Supabase project
 

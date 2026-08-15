@@ -4,9 +4,16 @@ import { supabase } from '../../../lib/supabaseClient';
 import { SCHEMAS } from '../../../lib/schemas';
 import RecordModal from '../RecordModal';
 import CsvImportModal from '../CsvImportModal';
-import { fmtMoney, fmtMoney0, fmtDate, todayDate, fromISO, daysBetween } from '../../../lib/utils';
+import { fmtMoney, fmtMoney0, fmtDate, todayDate, fromISO, daysBetween, mondayOfWeek, addDays, toISO } from '../../../lib/utils';
 
 const APPT_SCHEMA = SCHEMAS.appointments;
+const BLOCK_SCHEMA = SCHEMAS.timeBlocks;
+
+const DAY_START_HOUR = 6;   // 6am
+const DAY_END_HOUR = 22;    // 10pm
+const GRID_HEIGHT = 640;    // px, for the time-blocking week grid
+const TOTAL_MINUTES = (DAY_END_HOUR - DAY_START_HOUR) * 60;
+const PX_PER_MIN = GRID_HEIGHT / TOTAL_MINUTES;
 
 function daysUntil(dateStr) {
   const d = fromISO(dateStr);
@@ -23,6 +30,17 @@ function urgencyPill(days) {
   return <span className="pill good">In {days}d</span>;
 }
 
+function timeToMinutes(t) {
+  if (!t) return 0;
+  const [h, m] = t.split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+function weekDaysFrom(offset) {
+  const start = addDays(mondayOfWeek(todayDate()), offset * 7);
+  return Array.from({ length: 7 }, (_, i) => toISO(addDays(start, i)));
+}
+
 export default function OverviewSection({ onNavigate }) {
   const [accounts, setAccounts] = useState([]);
   const [debts, setDebts] = useState([]);
@@ -30,19 +48,29 @@ export default function OverviewSection({ onNavigate }) {
   const [bills, setBills] = useState([]);
   const [appts, setAppts] = useState([]);
   const [majestic, setMajestic] = useState([]);
+  const [goals, setGoals] = useState([]);
+  const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null); // 'add' | record object
+
+  const [modal, setModal] = useState(null); // appointment modal: 'add' | record object
   const [showCsv, setShowCsv] = useState(false);
+  const [apptView, setApptView] = useState('list'); // list | week
+  const [apptWeekOffset, setApptWeekOffset] = useState(0);
+
+  const [blockWeekOffset, setBlockWeekOffset] = useState(0);
+  const [blockModal, setBlockModal] = useState(null); // 'add' | record | { block_date } (prefilled add)
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [a, d, b, bi, ap, mp] = await Promise.all([
+    const [a, d, b, bi, ap, mp, g, tb] = await Promise.all([
       supabase.from('accounts').select('*'),
       supabase.from('debts').select('*'),
       supabase.from('budget_categories').select('*'),
       supabase.from('bills').select('*'),
       supabase.from('appointments').select('*'),
-      supabase.from('majestic_permits').select('*')
+      supabase.from('majestic_permits').select('*'),
+      supabase.from('goals').select('*'),
+      supabase.from('time_blocks').select('*')
     ]);
     setAccounts(a.data || []);
     setDebts(d.data || []);
@@ -50,6 +78,8 @@ export default function OverviewSection({ onNavigate }) {
     setBills(bi.data || []);
     setAppts(ap.data || []);
     setMajestic(mp.data || []);
+    setGoals(g.data || []);
+    setBlocks(tb.data || []);
     setLoading(false);
   }, []);
 
@@ -88,13 +118,27 @@ export default function OverviewSection({ onNavigate }) {
     load();
   }
 
-  function handleSaved(row, { deleted }) {
+  function handleApptSaved(row, { deleted }) {
     setAppts(list => {
       if (deleted) return list.filter(r => r.id !== row.id);
       const exists = list.some(r => r.id === row.id);
       return exists ? list.map(r => (r.id === row.id ? row : r)) : [...list, row];
     });
   }
+
+  function handleBlockSaved(row, { deleted }) {
+    setBlocks(list => {
+      if (deleted) return list.filter(r => r.id !== row.id);
+      const exists = list.some(r => r.id === row.id);
+      return exists ? list.map(r => (r.id === row.id ? row : r)) : [...list, row];
+    });
+  }
+
+  const apptWeekDays = weekDaysFrom(apptWeekOffset);
+  const blockWeekDays = weekDaysFrom(blockWeekOffset);
+  const goalOptions = [{ value: '', label: '— No goal —' }, ...goals.map(g => ({ value: g.id, label: g.title }))];
+  const goalTitleById = new Map(goals.map(g => [g.id, g.title]));
+  const hourLabels = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => DAY_START_HOUR + i);
 
   return (
     <>
@@ -146,6 +190,75 @@ export default function OverviewSection({ onNavigate }) {
         </div>
       </section>
 
+      <section className="block">
+        <h2>
+          Time Blocking
+          <span className="btn-row">
+            <button className="small" onClick={() => setBlockWeekOffset(o => o - 1)}>‹ Prev</button>
+            <button className="small" onClick={() => setBlockWeekOffset(0)}>This week</button>
+            <button className="small" onClick={() => setBlockWeekOffset(o => o + 1)}>Next ›</button>
+            <button className="small primary" onClick={() => setBlockModal('add')}>+ Add Time Block</button>
+          </span>
+        </h2>
+        <div className="card">
+          {goals.length === 0 && (
+            <div className="field-hint" style={{ marginTop: 0 }}>
+              Tip: add a Personal Goal first if you want blocks linked to a goal — you can still add unlinked blocks without one.
+            </div>
+          )}
+          <div style={{ display: 'flex', overflowX: 'auto' }}>
+            <div style={{ flexShrink: 0, width: 52 }}>
+              <div style={{ height: 24 }} />
+              {hourLabels.map(h => (
+                <div key={h} style={{ height: GRID_HEIGHT / hourLabels.length, fontSize: 11, color: 'var(--text-muted)', position: 'relative', top: -6 }}>
+                  {h % 12 === 0 ? 12 : h % 12}{h < 12 ? 'am' : 'pm'}
+                </div>
+              ))}
+            </div>
+            {blockWeekDays.map(dISO => {
+              const dayBlocks = blocks.filter(b => b.block_date === dISO);
+              const isToday = dISO === toISO(todayDate());
+              return (
+                <div key={dISO} style={{ flex: '1 0 120px', minWidth: 120, marginRight: 4 }}>
+                  <div style={{ height: 24, fontSize: 12, fontWeight: 600, textAlign: 'center', color: isToday ? 'var(--series-1)' : 'var(--text-secondary)' }}>
+                    {fromISO(dISO).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}
+                  </div>
+                  <div
+                    style={{
+                      position: 'relative', height: GRID_HEIGHT, borderRadius: 6,
+                      border: isToday ? '1px solid var(--series-1)' : '1px solid var(--gridline)',
+                      background: `repeating-linear-gradient(to bottom, var(--gridline) 0, var(--gridline) 1px, transparent 1px, transparent ${GRID_HEIGHT / hourLabels.length}px)`
+                    }}
+                  >
+                    {dayBlocks.map(b => {
+                      const startMin = Math.min(TOTAL_MINUTES, Math.max(0, timeToMinutes(b.start_time) - DAY_START_HOUR * 60));
+                      const endMin = Math.min(TOTAL_MINUTES, Math.max(startMin + 15, timeToMinutes(b.end_time) - DAY_START_HOUR * 60));
+                      const top = startMin * PX_PER_MIN;
+                      const height = Math.max(18, (endMin - startMin) * PX_PER_MIN);
+                      return (
+                        <button
+                          key={b.id}
+                          onClick={() => setBlockModal(b)}
+                          title={`${b.label} (${b.start_time}–${b.end_time})${b.goal_id ? ' · ' + (goalTitleById.get(b.goal_id) || '') : ''}`}
+                          style={{
+                            position: 'absolute', top, height, left: 2, right: 2,
+                            background: b.color, color: '#fff', border: 'none', borderRadius: 5,
+                            padding: '2px 5px', fontSize: 11, textAlign: 'left', overflow: 'hidden', cursor: 'pointer'
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.label}</div>
+                          {height > 30 && <div style={{ opacity: 0.9 }}>{b.start_time}–{b.end_time}</div>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {budget.length > 0 && (
         <section className="block">
           <h2>Budget: Budgeted vs. Spent</h2>
@@ -177,32 +290,69 @@ export default function OverviewSection({ onNavigate }) {
         <h2>
           Appointments &amp; To-dos
           <span className="btn-row">
+            <div className="toggle-row btn-row">
+              <button className={`small${apptView === 'list' ? ' active' : ''}`} onClick={() => setApptView('list')}>List</button>
+              <button className={`small${apptView === 'week' ? ' active' : ''}`} onClick={() => setApptView('week')}>Week</button>
+            </div>
             <button className="small" onClick={() => setShowCsv(true)}>{APPT_SCHEMA.csv.buttonLabel}</button>
             <button className="small primary" onClick={() => setModal('add')}>+ Add</button>
           </span>
         </h2>
-        <div className="card">
-          {appts.length === 0 ? (
-            <div className="empty">No appointments or to-dos yet.</div>
-          ) : (
-            <table className="data">
-              <thead><tr><th></th><th>Title</th><th>Type</th><th>Date</th><th>Time</th><th>Notes</th><th></th></tr></thead>
-              <tbody>
-                {[...appts].sort((a, b) => (daysUntil(a.appt_date) ?? 999) - (daysUntil(b.appt_date) ?? 999)).map(a => (
-                  <tr key={a.id} style={a.done ? { opacity: 0.5 } : undefined}>
-                    <td><input type="checkbox" checked={!!a.done} onChange={() => toggleApptDone(a)} /></td>
-                    <td>{a.title}</td>
-                    <td>{a.type}</td>
-                    <td>{a.appt_date ? fmtDate(a.appt_date) : '—'}</td>
-                    <td>{a.appt_time}</td>
-                    <td>{a.notes}</td>
-                    <td className="row-actions"><button className="small" onClick={() => setModal(a)}>Edit</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+
+        {apptView === 'list' ? (
+          <div className="card">
+            {appts.length === 0 ? (
+              <div className="empty">No appointments or to-dos yet.</div>
+            ) : (
+              <table className="data">
+                <thead><tr><th></th><th>Title</th><th>Type</th><th>Date</th><th>Time</th><th>Notes</th><th></th></tr></thead>
+                <tbody>
+                  {[...appts].sort((a, b) => (daysUntil(a.appt_date) ?? 999) - (daysUntil(b.appt_date) ?? 999)).map(a => (
+                    <tr key={a.id} style={a.done ? { opacity: 0.5 } : undefined}>
+                      <td><input type="checkbox" checked={!!a.done} onChange={() => toggleApptDone(a)} /></td>
+                      <td>{a.title}</td>
+                      <td>{a.type}</td>
+                      <td>{a.appt_date ? fmtDate(a.appt_date) : '—'}</td>
+                      <td>{a.appt_time}</td>
+                      <td>{a.notes}</td>
+                      <td className="row-actions"><button className="small" onClick={() => setModal(a)}>Edit</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
+          <div className="card">
+            <div className="toolbar">
+              <div className="btn-row">
+                <button className="small" onClick={() => setApptWeekOffset(o => o - 1)}>‹ Prev week</button>
+                <button className="small" onClick={() => setApptWeekOffset(0)}>This week</button>
+                <button className="small" onClick={() => setApptWeekOffset(o => o + 1)}>Next week ›</button>
+              </div>
+            </div>
+            <div className="cal-grid">
+              {apptWeekDays.map(d => (
+                <div className="cal-head" key={`h-${d}`}>{fromISO(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}</div>
+              ))}
+              {apptWeekDays.map(dISO => (
+                <div className={`cal-cell${dISO === toISO(todayDate()) ? ' cal-today' : ''}`} key={dISO}>
+                  <div className="cal-bills">
+                    {appts.filter(a => a.appt_date === dISO).map(a => (
+                      <button
+                        key={a.id}
+                        className={`cal-bill-chip pill ${a.done ? 'good' : a.type === 'Appointment' ? 'warning' : 'neutral'}`}
+                        onClick={() => setModal(a)}
+                      >
+                        {a.appt_time ? `${a.appt_time} ` : ''}{a.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {modal && (
@@ -210,11 +360,20 @@ export default function OverviewSection({ onNavigate }) {
           schema={APPT_SCHEMA}
           record={modal === 'add' ? null : modal}
           onClose={() => setModal(null)}
-          onSaved={handleSaved}
+          onSaved={handleApptSaved}
         />
       )}
       {showCsv && (
         <CsvImportModal schema={APPT_SCHEMA} onClose={() => setShowCsv(false)} onImported={() => load()} />
+      )}
+      {blockModal && (
+        <RecordModal
+          schema={BLOCK_SCHEMA}
+          record={blockModal === 'add' ? null : blockModal}
+          onClose={() => setBlockModal(null)}
+          onSaved={handleBlockSaved}
+          dynamicOptions={{ goal_id: goalOptions }}
+        />
       )}
     </>
   );

@@ -209,6 +209,22 @@ create table if not exists appointments (
 );
 
 -- ---------------------------------------------------------------------------
+-- Time blocking — color-coded blocks on the dashboard's weekly time-block
+-- grid, optionally tied to a Personal Goal.
+-- ---------------------------------------------------------------------------
+create table if not exists time_blocks (
+  id uuid primary key default uuid_generate_v4(),
+  block_date date not null default current_date,
+  start_time text not null default '09:00',       -- 24h "HH:MM"
+  end_time text not null default '10:00',          -- 24h "HH:MM"
+  label text not null default '',
+  color text not null default '#2a78d6',           -- hex color for the block
+  goal_id uuid references goals(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- updated_at triggers (only tables that carry an updated_at column)
 -- ---------------------------------------------------------------------------
 create or replace function set_updated_at() returns trigger as $$
@@ -222,7 +238,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['guardian_jobs','majestic_permits','goals','accounts',
-    'budget_categories','debts','bills','holdings','appointments']
+    'budget_categories','debts','bills','holdings','appointments','time_blocks']
   loop
     execute format('drop trigger if exists trg_%s_updated on %I;', t, t);
     execute format('create trigger trg_%s_updated before update on %I for each row execute procedure set_updated_at();', t, t);
@@ -237,7 +253,8 @@ declare t text;
 begin
   foreach t in array array['guardian_jobs','majestic_permits','goals','goal_milestones',
     'accounts','budget_categories','debts','bills','holdings','nutrition_targets',
-    'nutrition_logs','saved_meals','water_logs','meal_plan','grocery_items','appointments']
+    'nutrition_logs','saved_meals','water_logs','meal_plan','grocery_items','appointments',
+    'time_blocks']
   loop
     execute format('alter table %I enable row level security;', t);
     execute format('drop policy if exists "authenticated all" on %I;', t);
@@ -257,6 +274,8 @@ create index if not exists idx_water_logs_date on water_logs (log_date);
 create index if not exists idx_meal_plan_date on meal_plan (plan_date);
 create index if not exists idx_appointments_date on appointments (appt_date);
 create index if not exists idx_goal_milestones_goal on goal_milestones (goal_id);
+create index if not exists idx_time_blocks_date on time_blocks (block_date);
+create index if not exists idx_time_blocks_goal on time_blocks (goal_id);
 
 -- ---------------------------------------------------------------------------
 -- To add a column later, run a small ALTER as its own snippet, e.g.:

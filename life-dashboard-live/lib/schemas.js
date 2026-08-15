@@ -278,8 +278,31 @@ export const SCHEMAS = {
       { key: 'notes', label: 'Notes', type: 'textarea', aliases: ['notes'] },
       { key: 'done', label: 'Done', type: 'boolean', aliases: ['done', 'completed'] }
     ]
+  },
+
+  timeBlocks: {
+    table: 'time_blocks',
+    singular: 'Time Block',
+    plural: 'Time Blocking',
+    matchKey: ['block_date', 'start_time', 'label'],
+    csv: { enabled: false },
+    fields: [
+      { key: 'label', label: 'Label', type: 'text' },
+      { key: 'block_date', label: 'Date', type: 'date' },
+      { key: 'start_time', label: 'Start time', type: 'time' },
+      { key: 'end_time', label: 'End time', type: 'time' },
+      { key: 'color', label: 'Color', type: 'color' },
+      { key: 'goal_id', label: 'Linked goal (optional)', type: 'select', options: [], nullable: true }
+    ]
   }
 };
+
+// Preset swatches offered in the color picker for time blocks (and anywhere
+// else a color field shows up). Feel free to add more — any hex works.
+export const TIME_BLOCK_COLORS = [
+  '#2a78d6', '#eb6834', '#1baf7a', '#eda100',
+  '#c8508a', '#7a5cff', '#0ca30c', '#d03b3b'
+];
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -289,8 +312,10 @@ export function defaultForField(field) {
   switch (field.type) {
     case 'number': return 0;
     case 'boolean': return false;
-    case 'select': return field.options?.[0] ?? '';
+    case 'select': return field.nullable ? '' : (field.options?.[0] ?? '');
     case 'date': return '';
+    case 'time': return '09:00';
+    case 'color': return TIME_BLOCK_COLORS[0];
     default: return '';
   }
 }
