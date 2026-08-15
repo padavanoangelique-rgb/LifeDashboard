@@ -1,32 +1,15 @@
+/* Dark theme is the permanent default for this app — always a dark
+   background with light text, regardless of the visitor's device setting. */
 :root{
-  color-scheme: light;
-  --surface-1:#fcfcfb; --surface-2:#f9f9f7; --surface-card:#ffffff;
-  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#898781;
-  --gridline:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
-  --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-4:#eda100;
-  --success-text:#006300;
-  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
-}
-@media (prefers-color-scheme: dark){
-  :root:where(:not([data-theme="light"])){
-    color-scheme: dark;
-    --surface-1:#1a1a19; --surface-2:#0d0d0d; --surface-card:#232322;
-    --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#898781;
-    --gridline:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
-    --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500;
-    --success-text:#0ca30c;
-  }
-  :root:where(:not([data-theme="light"])) .pill.warning{ color:var(--warning); }
-}
-:root[data-theme="dark"]{
   color-scheme: dark;
   --surface-1:#1a1a19; --surface-2:#0d0d0d; --surface-card:#232322;
   --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#898781;
   --gridline:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
   --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500;
   --success-text:#0ca30c;
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
 }
-:root[data-theme="dark"] .pill.warning{ color:var(--warning); }
+:root .pill.warning{ color:var(--warning); }
 
 *{box-sizing:border-box;}
 html, body{ height:100%; }
