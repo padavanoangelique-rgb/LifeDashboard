@@ -45,7 +45,7 @@ export default function BillsSection() {
   const [showBulk, setShowBulk] = useState(false);
   const [monthDate, setMonthDate] = useState(() => { const d = todayDate(); d.setDate(1); return d; });
   const [paycheckAnchor, setPaycheckAnchor] = useState(() => toISO(todayDate()));
-  const [paycheckFreq, setPaycheckFreq] = useState('Biweekly');
+  const [paycheckFreq, setPaycheckFreq] = useState('Weekly');
 
   const load = useCallback(async () => {
     setLoading(true);
